@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TrackGradeMeat Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body { display: flex; min-height: 100vh; overflow-x: hidden; }
+    .sidebar { min-width: 220px; background-color: #343a40; padding-top: 60px; color: white; }
+    .sidebar a { display: block; color: white; padding: 10px 20px; text-decoration: none; }
+    .sidebar a:hover { background-color: #495057; }
+    .content { flex-grow: 1; padding: 20px; }
+    #map { height: 300px; width: 100%; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; }
+  </style>
+</head>
+<body>
+  <div class="sidebar position-fixed h-100">
+    <h4 class="text-center">TrackGradeMeat</h4>
+    <a href="#" onclick="showSection('grading')">Grading Standards</a>
+    <a href="#" onclick="showSection('reports')">Reports</a>
+    <a href="#" onclick="showSection('tracking')">Meat Tracking</a>
+    <a href="#" onclick="showSection('quality')">Quality Analysis</a>
+    <a href="#" onclick="showSection('packaging')">Packaging Oversight</a>
+    <a href="#" onclick="showSection('transport')">Transport Monitoring</a>
+  </div>
+
+  <div class="content offset-2">
+    <div class="top-bar">
+      <input type="text" class="form-control w-25" placeholder="Search...">
+      <div class="dropdown">
+        <button class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">User</button>
+        <ul class="dropdown-menu">
+          <li><a class="dropdown-item" href="#">Profile</a></li>
+          <li><a class="dropdown-item" href="index.html">Logout</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="dashboard-sections">
+      <div id="grading" class="section"> <h3>Grading Standards</h3> </div>
+      <div id="reports" class="section d-none"> <h3>Reports</h3> </div>
+      <div id="tracking" class="section d-none"> <h3>Meat Tracking</h3> </div>
+      <div id="quality" class="section d-none"> <h3>Quality Analysis</h3> </div>
+
+      <div id="packaging" class="section d-none">
+        <h3>Packaging Oversight</h3>
+        <div class="d-flex justify-content-between mb-2">
+          <input type="text" id="packagingSearch" class="form-control w-50" placeholder="Search by Package_ID or Packaging_Type...">
+          <select class="form-select w-25" id="dateFilter" onchange="updatePackagingChart()">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <table class="table" id="packagingTable">
+          <thead>
+            <tr>
+              <th>Package_ID</th><th>Batch_ID</th><th>Processed_Batch_ID</th><th>Product_Type_ID</th><th>Packaging_Type</th><th>Weight</th><th>Packaging_Date</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="mb-3 row g-2">
+          <input class="form-control col" id="pkg1" placeholder="Batch_ID">
+          <input class="form-control col" id="pkg2" placeholder="Processed_Batch_ID">
+          <input class="form-control col" id="pkg3" placeholder="Product_Type_ID">
+          <input class="form-control col" id="pkg4" placeholder="Packaging_Type">
+          <input class="form-control col" id="pkg5" placeholder="Weight">
+          <input class="form-control col" id="pkg6" placeholder="Packaging_Date">
+          <button class="btn btn-primary col" onclick="addPackaging()">Add</button>
+        </div>
+        <div class="card p-3 shadow">
+          <canvas id="packagingChart"></canvas>
+        </div>
+      </div>
+
+      <div id="transport" class="section d-none">
+        <h3>Transport Monitoring</h3>
+        <input type="text" id="transportSearch" class="form-control mb-2" placeholder="Search Transport..." onkeyup="updateTransportUI()">
+        <table class="table" id="transportTable">
+          <thead>
+            <tr>
+              <th>Transport_ID</th><th>Delivery_ID</th><th>Sensor_ID</th><th>Store_ID</th><th>Vehicle_Type</th><th>License_Plate</th><th>Transportation_Date</th><th>Transport_Duration</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="mb-3 row g-2">
+          <input class="form-control col" id="t1" placeholder="Delivery_ID">
+          <input class="form-control col" id="t2" placeholder="Sensor_ID">
+          <input class="form-control col" id="t3" placeholder="Store_ID">
+          <input class="form-control col" id="t4" placeholder="Vehicle_Type">
+          <input class="form-control col" id="t5" placeholder="License_Plate">
+          <input class="form-control col" id="t6" placeholder="Transportation_Date">
+          <input class="form-control col" id="t7" placeholder="Transport_Duration">
+          <button class="btn btn-primary col" onclick="addTransport()">Add</button>
+        </div>
+        <div id="map"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const packagingData = [];
+
+    const packagingChart = new Chart(document.getElementById('packagingChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Packages by Date',
+          backgroundColor: '#0d6efd',
+          borderRadius: 5,
+          data: []
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    function addPackaging() {
+      const id = packagingData.length + 1;
+      const item = {
+        id,
+        batch: pkg1.value,
+        processed: pkg2.value,
+        type: pkg3.value,
+        ptype: pkg4.value,
+        weight: pkg5.value,
+        date: pkg6.value
+      };
+      packagingData.push(item);
+      updatePackagingUI();
+      updatePackagingChart();
+    }
+
+    function updatePackagingUI() {
+      const tbody = document.querySelector('#packagingTable tbody');
+      const search = document.getElementById('packagingSearch').value.toLowerCase();
+      tbody.innerHTML = '';
+      packagingData.forEach(item => {
+        const match = item.id.toString().includes(search) || item.ptype.toLowerCase().includes(search);
+        if (match) {
+          tbody.innerHTML += `<tr><td>${item.id}</td><td>${item.batch}</td><td>${item.processed}</td><td>${item.type}</td><td>${item.ptype}</td><td>${item.weight}</td><td>${item.date}</td>
+            <td><button class='btn btn-danger btn-sm' onclick='removePackaging(${item.id})'>Delete</button></td></tr>`;
+        }
+      });
+    }
+
+    function removePackaging(id) {
+      const index = packagingData.findIndex(p => p.id === id);
+      if (index > -1) packagingData.splice(index, 1);
+      updatePackagingUI();
+      updatePackagingChart();
+    }
+
+    function updatePackagingChart() {
+      const filter = document.getElementById('dateFilter').value;
+      const count = {};
+      packagingData.forEach(item => {
+        let label = item.date;
+        if (filter === 'weekly') label = item.date.slice(0, 7); // YYYY-MM
+        if (filter === 'monthly') label = item.date.slice(0, 7); // YYYY-MM
+        count[label] = (count[label] || 0) + 1;
+      });
+      packagingChart.data.labels = Object.keys(count);
+      packagingChart.data.datasets[0].data = Object.values(count);
+      packagingChart.update();
+    }
+
+    const transportData = [];
+    function addTransport() {
+      const id = transportData.length + 1;
+      transportData.push({
+        id, d: t1.value, s: t2.value, st: t3.value,
+        vt: t4.value, lp: t5.value, td: t6.value, dur: t7.value
+      });
+      updateTransportUI();
+    }
+
+    function updateTransportUI() {
+      const tbody = document.querySelector('#transportTable tbody');
+      const search = document.getElementById('transportSearch').value.toLowerCase();
+      tbody.innerHTML = '';
+      transportData.forEach(item => {
+        if (JSON.stringify(item).toLowerCase().includes(search)) {
+          tbody.innerHTML += `<tr><td>${item.id}</td><td>${item.d}</td><td>${item.s}</td><td>${item.st}</td><td>${item.vt}</td><td>${item.lp}</td><td>${item.td}</td><td>${item.dur}</td>
+            <td><button class='btn btn-danger btn-sm' onclick='removeTransport(${item.id})'>Delete</button></td></tr>`;
+        }
+      });
+    }
+
+    function removeTransport(id) {
+      const i = transportData.findIndex(t => t.id === id);
+      if (i > -1) transportData.splice(i, 1);
+      updateTransportUI();
+    }
+
+    function showSection(id) {
+      document.querySelectorAll('.section').forEach(s => s.classList.add('d-none'));
+      document.getElementById(id).classList.remove('d-none');
+      if (id === 'transport') initLeaflet();
+    }
+
+    function initLeaflet() {
+      const map = L.map('map').setView([23.8103, 90.4125], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+    }
+  </script>
+</body>
+</html>
